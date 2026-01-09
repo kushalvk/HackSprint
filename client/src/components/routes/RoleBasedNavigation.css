@@ -1,0 +1,306 @@
+/* Role-Based Navigation Styles */
+
+:root {
+  --primary-color: #1e40af;
+  --primary-dark: #1e3a8a;
+  --primary-light: #3b82f6;
+  --admin-color: #dc2626;
+  --manager-color: #2563eb;
+  --technician-color: #0891b2;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --bg-light: #f8fafc;
+  --bg-white: #ffffff;
+  --text-dark: #1f2937;
+  --text-light: #6b7280;
+  --border-color: #e5e7eb;
+}
+
+/* Desktop Navigation */
+.role-nav-desktop {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  height: 100vh;
+  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+  color: white;
+  padding: 0;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+
+.nav-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: bold;
+  text-decoration: none;
+  color: white;
+}
+
+.nav-logo {
+  width: 28px;
+  height: 28px;
+  animation: spin 3s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.nav-user-badge {
+  display: flex;
+  align-items: center;
+}
+
+.nav-role-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.nav-role-badge[data-role='admin'] {
+  background-color: rgba(220, 38, 38, 0.3);
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #fca5a5;
+}
+
+.nav-role-badge[data-role='manager'] {
+  background-color: rgba(37, 99, 235, 0.3);
+  border-color: rgba(37, 99, 235, 0.5);
+  color: #bfdbfe;
+}
+
+.nav-role-badge[data-role='technician'] {
+  background-color: rgba(8, 145, 178, 0.3);
+  border-color: rgba(8, 145, 178, 0.5);
+  color: #a5f3fc;
+}
+
+.nav-menu {
+  flex: 1;
+  list-style: none;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+.nav-menu-item {
+  margin: 0;
+}
+
+.nav-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.5rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  border-left: 4px solid transparent;
+}
+
+.nav-menu-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  padding-left: 1.5rem;
+}
+
+.nav-menu-link.active {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white;
+  border-left-color: #3b82f6;
+}
+
+.nav-menu-link svg {
+  flex-shrink: 0;
+}
+
+/* Navigation Footer */
+.nav-footer {
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.nav-user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.user-details {
+  min-width: 0;
+}
+
+.user-name {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-email {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-logout-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.nav-logout-btn:hover {
+  background-color: rgba(239, 68, 68, 0.3);
+  color: white;
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Mobile Navigation (Hidden by default) */
+.role-nav-mobile {
+  display: none;
+}
+
+/* Responsive: Mobile Navigation */
+@media (max-width: 768px) {
+  .role-nav-desktop {
+    display: none;
+  }
+
+  .role-nav-mobile {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+    color: white;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-nav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .mobile-menu-toggle {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-menu-content {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 1rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .mobile-menu-content .nav-menu-link {
+    padding: 1rem;
+  }
+
+  .mobile-menu-content .nav-logout-btn {
+    margin: 1rem;
+    width: calc(100% - 2rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 6px;
+  }
+}
+
+/* Main Content Offset (for desktop navigation) */
+@media (min-width: 769px) {
+  /* This class should be applied to main content container */
+  .with-sidebar {
+    margin-left: 280px;
+  }
+}
+
+/* Scrollbar Styling */
+.role-nav-desktop::-webkit-scrollbar {
+  width: 6px;
+}
+
+.role-nav-desktop::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.role-nav-desktop::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.role-nav-desktop::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
