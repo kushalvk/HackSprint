@@ -61,8 +61,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * Mock login - in production, call your backend API
-   * Users can only login with pre-created accounts
+   * Login - Call backend API for authentication
+   * Users can only login with pre-created accounts from the database
    * @param {string} email - User email
    * @param {string} password - User password
    * @returns {Promise<object>} - User object with role
@@ -71,27 +71,35 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       
-      // Mock API call - simulate backend validation
-      // In production, make real API call: POST /api/auth/login
-      const user = MOCK_USERS_DATABASE.find(
-        u => u.email === email && u.password === password
-      );
+      // Call real backend API
+      const response = await fetch('http://localhost:5000/api/auth/signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password })
+      });
 
-      if (!user) {
-        throw new Error('Invalid email or password');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Invalid email or password');
       }
 
-      // Extract user data (exclude password)
+      const data = await response.json();
+      
+      // Extract user data from response
       const userData = {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role // 'admin', 'manager', or 'technician'
+        id: data.user.id,
+        email: data.user.email,
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        username: data.user.username,
+        role: data.user.role // 'admin', 'manager', or 'technician'
       };
 
       // Store auth data
       localStorage.setItem('authUser', JSON.stringify(userData));
-      localStorage.setItem('token', `token_${user.id}_${Date.now()}`); // Mock token
+      localStorage.setItem('token', data.token); // Store JWT token from backend
 
       setUser(userData);
       return userData;
@@ -130,13 +138,14 @@ export const AuthProvider = ({ children }) => {
    */
   const getDashboardUrl = () => {
     if (!user) return '/signin';
-    switch (user.role) {
+    const role = user.role ? user.role.toLowerCase() : '';
+    switch (role) {
       case 'admin':
-        return '/admin/dashboard';
+        return '/admin-dashboard';
       case 'manager':
-        return '/manager/dashboard';
+        return '/manager-dashboard';
       case 'technician':
-        return '/technician/dashboard';
+        return '/technician-dashboard';
       default:
         return '/signin';
     }
