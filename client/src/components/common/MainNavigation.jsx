@@ -1,53 +1,73 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Wrench, Users, Calendar, FileText, Monitor, ChevronDown, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const MainNavigation = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout, getDashboardUrl } = useAuth();
   const [showEquipmentDropdown, setShowEquipmentDropdown] = useState(false);
 
-  // Define navigation items based on role
-  const role = (user && (user.role || user.roleName || user.roleType)) ? (user.role || user.roleName || user.roleType).toString().toLowerCase() : 'manager';
-  let navItems = [];
-  if (role === 'technician') {
-    navItems = [
-      { name: 'Dashboard', path: '/dashboard', icon: null },
-      { name: 'My Tasks', path: '/maintenance', icon: null },
-      { name: 'Kanban', path: '/maintenance-kanban', icon: Wrench },
-      { name: 'Maintenance Calendar', path: '/maintenance-calendar', icon: Calendar }
-    ];
-  } else if (role === 'admin') {
-    navItems = [
-      { name: 'Dashboard', path: '/dashboard', icon: null },
-      { name: 'Equipment', path: '/equipment', icon: Monitor },
-      { name: 'Teams', path: '/teams', icon: Users },
-      { name: 'Reporting', path: '/reporting', icon: FileText }
-    ];
-  } else {
-    // default manager
-    navItems = [
-      { name: 'Dashboard', path: '/dashboard', icon: null },
-      { name: 'Maintenance', path: '/maintenance', icon: null },
-      { name: 'Maintenance Calendar', path: '/maintenance-calendar', icon: Calendar },
-      { name: 'Reporting', path: '/reporting', icon: FileText },
-      { name: 'Teams', path: '/teams', icon: Users }
-    ];
-  }
+  // Get user role, normalize to lowercase
+  const role = user && user.role ? user.role.toLowerCase() : 'manager';
 
-  // Get current active tab based on pathname
+  /**
+   * Define navigation items based on user role
+   */
+  const getNavItems = () => {
+    switch (role) {
+      case 'technician':
+        return [
+          { name: 'Dashboard', path: '/technician-dashboard', icon: null },
+          { name: 'Kanban', path: '/maintenance-kanban', icon: Wrench },
+          { name: 'My Tasks', path: '/maintenance', icon: null }
+        ];
+      
+      case 'manager':
+        return [
+          { name: 'Dashboard', path: '/manager-dashboard', icon: null },
+          { name: 'Calendar', path: '/maintenance-calendar', icon: Calendar },
+          { name: 'Equipment', path: '/equipment', icon: Monitor },
+          { name: 'Reports', path: '/reporting', icon: FileText }
+        ];
+      
+      case 'admin':
+        return [
+          { name: 'Dashboard', path: '/admin-dashboard', icon: null },
+          { name: 'Users', path: '/users', icon: Users },
+          { name: 'Teams', path: '/teams', icon: Users },
+          { name: 'Equipment', path: '/equipment', icon: Monitor },
+          { name: 'Reports', path: '/reporting', icon: FileText }
+        ];
+      
+      default:
+        return [
+          { name: 'Dashboard', path: getDashboardUrl(), icon: null }
+        ];
+    }
+  };
+
+  const navItems = getNavItems();
+
+  /**
+   * Get current active tab based on pathname
+   */
   const getActiveTab = () => {
-    if (location.pathname === '/dashboard') return 'Dashboard';
-    if (location.pathname === '/maintenance') return 'Maintenance';
-    if (location.pathname === '/maintenance-calendar') return 'Maintenance Calendar';
-    if (location.pathname === '/reporting') return 'Reporting';
-    if (location.pathname === '/teams') return 'Teams';
-    if (location.pathname === '/equipment') return 'Equipment';
-    if (location.pathname === '/workcenter') return 'Work Center';
-    return 'Dashboard'; // default
+    const currentPath = location.pathname;
+    const activeItem = navItems.find(item => item.path === currentPath);
+    return activeItem ? activeItem.name : 'Dashboard';
   };
 
   const activeTab = getActiveTab();
+
+  /**
+   * Handle logout
+   */
+  const handleLogout = () => {
+    logout();
+    navigate('/signin');
+  };
 
   return (
     <>
@@ -72,7 +92,7 @@ const MainNavigation = ({ user, onLogout }) => {
                 {user ? (user.name ? user.name.charAt(0).toUpperCase() : user.firstName?.charAt(0).toUpperCase() || 'U') : 'U'}
               </button>
               <button
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white font-semibold hover:ring-2 hover:ring-red-400 transition-all cursor-pointer"
                 title="Logout"
               >
@@ -101,56 +121,6 @@ const MainNavigation = ({ user, onLogout }) => {
                 <span>{item.name}</span>
               </button>
             ))}
-
-            {/* Equipment Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowEquipmentDropdown(!showEquipmentDropdown)}
-                className={`px-4 py-3 font-medium transition-all flex items-center space-x-1 ${
-                  activeTab === 'Equipment' || activeTab === 'Work Center'
-                    ? 'text-cyan-400 border-b-2 border-cyan-400'
-                    : 'text-gray-400 hover:text-cyan-300'
-                }`}
-              >
-                <Monitor className="w-4 h-4" />
-                <span>Equipment</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${showEquipmentDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* Dropdown Menu */}
-              {showEquipmentDropdown && (
-                <div className="absolute top-full left-0 mt-0 w-56 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50">
-                  <button
-                    onClick={() => {
-                      navigate('/workcenter');
-                      setShowEquipmentDropdown(false);
-                    }}
-                    className={`w-full px-6 py-3 text-left transition-all flex items-center space-x-2 first:rounded-t-lg ${
-                      activeTab === 'Work Center'
-                        ? 'text-cyan-400 bg-slate-700/50'
-                        : 'text-gray-300 hover:bg-slate-700/50 hover:text-cyan-400'
-                    }`}
-                  >
-                    <Wrench className="w-4 h-4" />
-                    <span>Work Center</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigate('/equipment');
-                      setShowEquipmentDropdown(false);
-                    }}
-                    className={`w-full px-6 py-3 text-left transition-all flex items-center space-x-2 last:rounded-b-lg ${
-                      activeTab === 'Equipment'
-                        ? 'text-cyan-400 bg-slate-700/50'
-                        : 'text-gray-300 hover:bg-slate-700/50 hover:text-cyan-400'
-                    }`}
-                  >
-                    <Monitor className="w-4 h-4" />
-                    <span>Equipment List</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </nav>
