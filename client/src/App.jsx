@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useAuth } from './context/AuthContext';
+import ProtectedRoute from './components/routes/ProtectedRoute';
 
 // Import all your page components
 import LandingPage from './pages/Landing';
-// SignUp route disabled - user accounts must be created by Admin
 import SignIn from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
@@ -27,88 +28,39 @@ import KanbanBoard from './components/kanban/KanbanBoard';
 import Header from './components/common/Navbar';
 import Users from './pages/Users';
 
-// Your PrivateRoute component remains the same
-const PrivateRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    return children;
-  }
-  return <Navigate to="/signin" />;
-};
-
-// RoleRoute: restrict access based on roles array
-const RoleRoute = ({ children, allowedRoles = [], user }) => {
-  const token = localStorage.getItem('token');
-  if (!token) return <Navigate to="/signin" />;
-  if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
-    // redirect unauthorized to general dashboard
-    return <Navigate to="/dashboard" />;
-  }
-  return children;
-};
-
-// Landing route that redirects authenticated users to dashboard
+/**
+ * LandingRoute: redirect authenticated users to their role-specific dashboard
+ */
 const LandingRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    return <Navigate to="/dashboard" />;
+  const { isAuthenticated, getDashboardUrl } = useAuth();
+  if (isAuthenticated) {
+    return <Navigate to={getDashboardUrl()} replace />;
   }
   return children;
 };
 
+/**
+ * DashboardRoute: redirect to role-specific dashboard based on user role
+ */
+const DashboardRoute = () => {
+  const { user, getDashboardUrl } = useAuth();
+  return <Navigate to={getDashboardUrl()} replace />;
+};
 
 function App() {
-  const [user, setUser] = useState(null);
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const token = localStorage.getItem('token');
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token');
-
-      if (urlToken) {
-        // Token from OAuth redirect
-        localStorage.setItem('token', urlToken);
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-
-      const finalToken = urlToken || token;
-
-      if (finalToken) {
-        try {
-          const response = await fetch('http://localhost:5000/api/profile/me', {
-            headers: {
-              'Authorization': `Bearer ${finalToken}`
-            }
-          });
-
-          if (response.ok) {
-            const userData = await response.json();
-            setUser(userData);
-          } else {
-            // Handle unauthorized or other errors
-            localStorage.removeItem('token');
-            setUser(null);
-          }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-          localStorage.removeItem('token');
-          setUser(null);
-        }
-      }
-    };
-
-    fetchUserData();
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token'); 
-    localStorage.removeItem('user');
-    setUser(null);
-    navigate('/');
-  };
+  // Show loading state while auth is being checked
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="text-gray-100">
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -124,79 +76,190 @@ function App() {
         pauseOnHover
       />
       <Routes>
-        {/* The LandingPage component is now used for the root path */}
+        {/* ==================== PUBLIC ROUTES ==================== */}
         <Route path="/" element={<LandingRoute><LandingPage /></LandingRoute>} />
-
-        {/* Your other routes remain the same */}
-        {/* Public signup disabled: accounts must be created by Admin */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/verify-otp" element={<VerifyOtp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-        {/* Role-aware dashboards */}
+
+        {/* ==================== ROLE-BASED DASHBOARDS ==================== */}
+        
+        {/* Admin Dashboard - ONLY for admins */}
         <Route
-          path="/dashboard"
-          element={<PrivateRoute><ManagerDashboard user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/admin"
-          element={<PrivateRoute><RoleRoute user={user} allowedRoles={[ 'admin' ]}><AdminDashboard user={user} onLogout={handleLogout} /></RoleRoute></PrivateRoute>}
-        />
-        <Route
-          path="/admin/users"
-          element={<PrivateRoute><RoleRoute user={user} allowedRoles={[ 'admin' ]}><Users user={user} onLogout={handleLogout} /></RoleRoute></PrivateRoute>}
-        />
-        <Route
-          path="/technician"
-          element={<PrivateRoute><RoleRoute user={user} allowedRoles={[ 'technician' ]}><TechnicianDashboard user={user} onLogout={handleLogout} /></RoleRoute></PrivateRoute>}
-        />
-        <Route
-          path="/maintenance"
-          element={<PrivateRoute><Maintenance user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/maintenance/new"
-          element={<PrivateRoute><CreateMaintenanceRequest user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/maintenance/edit/:id"
-          element={<PrivateRoute><CreateMaintenanceRequest user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/reporting"
-          element={<PrivateRoute><Reporting user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/profile"
-          element={<PrivateRoute user={user} onLogout={handleLogout}><Profile user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/activity"
-          element={<PrivateRoute user={user} onLogout={handleLogout}><ActivityPage /></PrivateRoute>}
-        />
-        <Route
-          path="/equipment"
-          element={<PrivateRoute><Equipment user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/teams"
-          element={<PrivateRoute><Teams user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/workcenter"
-          element={<PrivateRoute><WorkCenter user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/maintenance-calendar"
-          element={<PrivateRoute><MaintenanceCalendar user={user} onLogout={handleLogout} /></PrivateRoute>}
-        />
-        <Route
-          path="/maintenance-kanban"
-          element={<PrivateRoute><RoleRoute user={user} allowedRoles={[ 'technician', 'manager' ]}><KanbanBoard user={user} onLogout={handleLogout} /></RoleRoute></PrivateRoute>}
+          path="/admin-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminDashboard user={user} />
+            </ProtectedRoute>
+          }
         />
 
-        {/* A catch-all route to redirect unknown paths back to the home page */}
-        <Route path="*" element={<Navigate to="/" />} />
+        {/* Manager Dashboard - ONLY for managers */}
+        <Route
+          path="/manager-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['manager']}>
+              <ManagerDashboard user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Technician Dashboard - ONLY for technicians */}
+        <Route
+          path="/technician-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['technician']}>
+              <TechnicianDashboard user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Generic dashboard - redirects to role-specific dashboard */}
+        <Route path="/dashboard" element={<DashboardRoute />} />
+
+        {/* ==================== TECHNICIAN ROUTES ==================== */}
+        
+        {/* Kanban Board - Technician & Manager only */}
+        <Route
+          path="/maintenance-kanban"
+          element={
+            <ProtectedRoute allowedRoles={['technician', 'manager']}>
+              <KanbanBoard user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Maintenance List */}
+        <Route
+          path="/maintenance"
+          element={
+            <ProtectedRoute>
+              <Maintenance user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ==================== MAINTENANCE ROUTES ==================== */}
+
+        {/* Create Maintenance Request - Manager & Admin only */}
+        <Route
+          path="/maintenance/new"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'admin']}>
+              <CreateMaintenanceRequest user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Edit Maintenance Request - Manager & Admin only */}
+        <Route
+          path="/maintenance/edit/:id"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'admin']}>
+              <CreateMaintenanceRequest user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* View Maintenance Request - All authenticated users */}
+        <Route
+          path="/maintenance/:id"
+          element={
+            <ProtectedRoute>
+              <Maintenance user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ==================== ADMIN ROUTES ==================== */}
+
+        {/* Users Management - Admin only */}
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Users user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Teams Management - Admin & Manager */}
+        <Route
+          path="/teams"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'manager']}>
+              <Teams user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Equipment Management - Admin & Manager */}
+        <Route
+          path="/equipment"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'manager']}>
+              <Equipment user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Work Center - Admin & Manager */}
+        <Route
+          path="/workcenter"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'manager']}>
+              <WorkCenter user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ==================== MANAGER/ADMIN ROUTES ==================== */}
+
+        {/* Maintenance Calendar - Manager & Admin */}
+        <Route
+          path="/maintenance-calendar"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'admin']}>
+              <MaintenanceCalendar user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Reports - Manager & Admin */}
+        <Route
+          path="/reporting"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'admin']}>
+              <Reporting user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ==================== USER ROUTES (ALL ROLES) ==================== */}
+
+        {/* Profile */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Activity */}
+        <Route
+          path="/activity"
+          element={
+            <ProtectedRoute>
+              <ActivityPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ==================== CATCH-ALL ==================== */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
