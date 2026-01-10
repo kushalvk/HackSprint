@@ -4,10 +4,10 @@ import { getAllMaintenanceRequests, updateMaintenanceRequest } from '../../api/m
 import MainNavigation from '../common/MainNavigation';
 
 const STATUS_ORDER = [
-  { key: 'New', title: 'New' },
-  { key: 'In Progress', title: 'In Progress' },
-  { key: 'Repaired', title: 'Repaired' },
-  { key: 'Scrap', title: 'Scrap' }
+  { key: 'New', title: 'New', color: 'bg-slate-600' },
+  { key: 'In Progress', title: 'In Progress', color: 'bg-amber-600' },
+  { key: 'Repaired', title: 'Repaired', color: 'bg-green-600' },
+  { key: 'Scrap', title: 'Scrap', color: 'bg-red-600' }
 ];
 
 export default function KanbanBoard({ user }) {
@@ -18,14 +18,29 @@ export default function KanbanBoard({ user }) {
   const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getAllMaintenanceRequests();
+      // For technicians, fetch their team's tasks from dashboard-data endpoint
+      // For managers/admins, fetch all requests
+      let data;
+      if (user.role === 'technician') {
+        const response = await fetch('/api/analytics/dashboard-data', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const dashboardData = await response.json();
+        // Use recentRequests which includes all tasks for the technician
+        data = dashboardData.recentRequests || [];
+      } else {
+        data = await getAllMaintenanceRequests();
+      }
       setRequests(data);
+      console.log(`✓ Loaded ${data.length} tasks for ${user.role}:`, data.map(r => ({ id: r._id, subject: r.subject, team: r.team?.teamName, technician: r.technician?.firstName })));
     } catch (err) {
       console.error('Failed to load requests for kanban', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchRequests();
@@ -102,6 +117,7 @@ export default function KanbanBoard({ user }) {
                 key={col.key}
                 title={col.title}
                 statusKey={col.key}
+                statusColor={col.color}
                 cards={grouped[col.key] || []}
                 onDrop={onDrop}
                 onDragOver={onDragOver}
