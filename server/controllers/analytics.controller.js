@@ -58,29 +58,42 @@ const getCalendarEvents = async (req, res) => {
 ====================================================== */
 const getDashboardData = async (req, res) => {
   try {
-    const totalRequests = await MaintenanceRequest.countDocuments();
-    const completedRequests = await MaintenanceRequest.countDocuments({ status: 'Repaired' });
-    const inProgressRequests = await MaintenanceRequest.countDocuments({ status: 'In Progress' });
-    const pendingRequests = await MaintenanceRequest.countDocuments({ status: 'New' });
+    // Build filter based on user role
+    let filter = {};
+    if (req.user.role === 'technician') {
+      filter = {
+        $or: [
+          { technician: req.user._id },
+          { createdBy: req.user._id }
+        ]
+      };
+    }
+
+    const totalRequests = await MaintenanceRequest.countDocuments(filter);
+    const completedRequests = await MaintenanceRequest.countDocuments({ ...filter, status: 'Repaired' });
+    const inProgressRequests = await MaintenanceRequest.countDocuments({ ...filter, status: 'In Progress' });
+    const pendingRequests = await MaintenanceRequest.countDocuments({ ...filter, status: 'New' });
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const overdueRequests = await MaintenanceRequest.countDocuments({
+      ...filter,
       status: { $nin: ['Repaired', 'Scrap'] },
       scheduledDate: { $lt: now, $exists: true }
     });
 
     const completedToday = await MaintenanceRequest.countDocuments({
+      ...filter,
       status: 'Repaired',
       updatedAt: { $gte: today }
     });
 
     const underRepairEquipment = inProgressRequests;
 
-    const activeTechnicians = await MaintenanceRequest.distinct('technician', { status: 'In Progress' });
-    const allTechnicians = await MaintenanceRequest.distinct('technician');
+    const activeTechnicians = await MaintenanceRequest.distinct('technician', { ...filter, status: 'In Progress' });
+    const allTechnicians = await MaintenanceRequest.distinct('technician', filter);
     const totalTechnicians = allTechnicians.filter(id => id).length;
     const technicianUtilization = totalTechnicians > 0 ? Math.round((activeTechnicians.filter(id => id).length / totalTechnicians) * 100) : 0;
 
@@ -88,7 +101,7 @@ const getDashboardData = async (req, res) => {
     let avgResponseTime = null;
     try {
       const agg = await MaintenanceRequest.aggregate([
-        { $match: { status: 'Repaired', createdAt: { $exists: true }, updatedAt: { $exists: true } } },
+        { $match: { ...filter, status: 'Repaired', createdAt: { $exists: true }, updatedAt: { $exists: true } } },
         { $project: { diffMs: { $subtract: ['$updatedAt', '$createdAt'] } } },
         { $group: { _id: null, avgMs: { $avg: '$diffMs' } } }
       ]);
@@ -105,6 +118,7 @@ const getDashboardData = async (req, res) => {
     const equipmentHealth = totalEquipment > 0 ? Math.round(((totalEquipment - scrappedEquipment) / totalEquipment) * 100) : 100;
 
     const priorityAgg = await MaintenanceRequest.aggregate([
+      { $match: filter },
       { $group: { _id: '$priority', count: { $sum: 1 } } }
     ]);
 
@@ -113,21 +127,27 @@ const getDashboardData = async (req, res) => {
       if (p._id) priorityDistribution[p._id.toLowerCase()] = p.count;
     });
 
-    const recentRequests = await MaintenanceRequest.find()
+    const recentRequests = await MaintenanceRequest.find(filter)
       .sort({ createdAt: -1 })
       .limit(10)
+      .populate('createdBy', 'firstName lastName')
       .populate('equipment', 'name')
+      .populate('team', 'teamName')
       .populate('technician', 'firstName lastName');
 
     const upcomingMaintenance = await MaintenanceRequest.find({
+      ...filter,
       scheduledDate: { $gte: now, $lte: next7Days }
     })
       .sort({ scheduledDate: 1 })
+      .populate('createdBy', 'firstName lastName')
       .populate('equipment', 'name')
+      .populate('team', 'teamName')
       .populate('technician', 'firstName lastName');
 
     // Maintenance type distribution (Preventive vs Corrective)
     const typeAgg = await MaintenanceRequest.aggregate([
+      { $match: filter },
       { $group: { _id: '$maintenanceType', count: { $sum: 1 } } }
     ]);
     const maintenanceTypeDistribution = { Preventive: 0, Corrective: 0 };
@@ -139,6 +159,7 @@ const getDashboardData = async (req, res) => {
 
     // Top problematic equipment (by number of requests)
     const topEquipAgg = await MaintenanceRequest.aggregate([
+      { $match: filter },
       { $group: { _id: '$equipment', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 5 }
@@ -153,7 +174,7 @@ const getDashboardData = async (req, res) => {
 
     // Top downtime equipment (sum of durationHours)
     const downtimeAgg = await MaintenanceRequest.aggregate([
-      { $match: { durationHours: { $exists: true, $gt: 0 } } },
+      { $match: { ...filter, durationHours: { $exists: true, $gt: 0 } } },
       { $group: { _id: '$equipment', totalDowntime: { $sum: '$durationHours' }, requests: { $sum: 1 } } },
       { $sort: { totalDowntime: -1 } },
       { $limit: 5 }
@@ -221,7 +242,10 @@ const getDashboardData = async (req, res) => {
     };
 
     // Status distribution (pie)
-    const statusAgg = await MaintenanceRequest.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]);
+    const statusAgg = await MaintenanceRequest.aggregate([
+      { $match: filter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
     const statusLabels = statusAgg.map(s => s._id || 'Unknown');
     const statusCounts = statusAgg.map(s => s.count);
     const statusData = {
@@ -230,7 +254,10 @@ const getDashboardData = async (req, res) => {
     };
 
     // Category distribution
-    const categoryAgg = await MaintenanceRequest.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }]);
+    const categoryAgg = await MaintenanceRequest.aggregate([
+      { $match: filter },
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]);
     const categoryLabels = categoryAgg.map(c => c._id || 'Unspecified');
     const categoryCounts = categoryAgg.map(c => c.count);
     const categoryData = {

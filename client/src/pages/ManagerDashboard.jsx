@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Loader, AlertTriangle } from 'lucide-react';
+import { FileText, Search, Loader, AlertTriangle, Plus } from 'lucide-react';
 import MainNavigation from '../components/common/MainNavigation';
 import { useAuth } from '../context/AuthContext';
 
@@ -140,6 +140,10 @@ export default function ManagerDashboard({ user }) {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-semibold">Manager Menu</h1>
           <div className="flex items-center space-x-3">
+            <button onClick={() => navigate('/maintenance/new')} className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-lg text-white font-medium flex items-center space-x-2">
+              <Plus className="w-4 h-4" />
+              <span>Create Request</span>
+            </button>
             <button onClick={() => navigate('/manager-dashboard')} className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 rounded-lg text-white font-medium">Dashboard</button>
             <button onClick={() => navigate('/maintenance-calendar')} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 rounded-lg text-white font-medium">Calendar</button>
             <button onClick={() => navigate('/equipment')} className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 rounded-lg text-white font-medium">Equipment</button>

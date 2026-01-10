@@ -1,10 +1,36 @@
 const User = require('../models/User');
+const MaintenanceTeam = require('../models/MaintenanceTeam');
 
 // @desc    Get all users
 // @route   GET /api/users
 // @access  Private
+// Role-based: Admins/Managers see all users; Technicians see only their team members
 const getAllUsers = async (req, res) => {
   try {
+    // If user is a technician, only show their team members
+    if (req.user.role === 'technician') {
+      // Find teams where this technician is a member
+      const teams = await MaintenanceTeam.find({
+        members: req.user._id
+      }).populate('members', '-password');
+
+      // Extract unique team members
+      const memberIds = new Set();
+      teams.forEach(team => {
+        team.members.forEach(member => {
+          memberIds.add(member._id.toString());
+        });
+      });
+
+      // Get all team members
+      const users = await User.find({
+        _id: { $in: Array.from(memberIds) }
+      }).select('-password');
+
+      return res.json(users);
+    }
+
+    // Admins and managers see all users
     const users = await User.find().select('-password');
     res.json(users);
   } catch (error) {

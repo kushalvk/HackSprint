@@ -36,9 +36,17 @@ const createTeam = async (req, res) => {
 // @desc    Get all maintenance teams
 // @route   GET /api/teams
 // @access  Private
+// Role-based: Admins/Managers see all teams; Technicians see only their teams
 const getAllTeams = async (req, res) => {
   try {
-    const teams = await MaintenanceTeam.find()
+    let query = {};
+
+    // Technicians can only see teams they are members of
+    if (req.user.role === 'technician') {
+      query = { members: req.user._id };
+    }
+
+    const teams = await MaintenanceTeam.find(query)
       .populate('members', 'firstName lastName email')
       .populate('leader', 'firstName lastName email')
       .sort({ createdAt: -1 });
@@ -52,13 +60,25 @@ const getAllTeams = async (req, res) => {
 // @desc    Get a maintenance team by ID
 // @route   GET /api/teams/:id
 // @access  Private
+// Role-based: Technicians can only view teams they are members of
 const getTeamById = async (req, res) => {
   try {
     const team = await MaintenanceTeam.findById(req.params.id)
       .populate('members', 'firstName lastName email')
       .populate('leader', 'firstName lastName email');
+    
     if (!team) {
       return res.status(404).json({ message: 'Maintenance team not found' });
+    }
+
+    // Technicians can only view teams they are members of
+    if (req.user.role === 'technician') {
+      const isMember = team.members.some(member => member._id.toString() === req.user._id.toString());
+      if (!isMember) {
+        return res.status(403).json({ 
+          message: 'You can only view teams you are a member of' 
+        });
+      }
     }
     
     res.json(team);

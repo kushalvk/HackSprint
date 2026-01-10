@@ -1,11 +1,28 @@
 const MaintenanceRequest = require('../models/MaintenanceRequest');
 const { sendMaintenanceRequestNotification, sendCompletionNotification, sendOverdueNotification } = require('../services/notification.service');
+const {
+  canCreateRequest,
+  canAssignTechnician,
+  canSelfAssign,
+  canMoveRequestStatus,
+  canScrapeEquipment,
+  canDeleteRequest,
+  canViewRequest,
+  getRequestPermissions
+} = require('../services/authorization.service');
 
 // @desc    Create a new maintenance request
 // @route   POST /api/requests
-// @access  Private
+// @access  Private (Any authenticated user)
 const createRequest = async (req, res) => {
   try {
+    // Check if user can create a request
+    if (!canCreateRequest(req.user)) {
+      return res.status(403).json({
+        message: 'Access denied: You do not have permission to create maintenance requests'
+      });
+    }
+
     const {
       subject,
       equipment,
@@ -18,10 +35,16 @@ const createRequest = async (req, res) => {
       durationHours,
       priority,
       company,
-      status,
       notes,
       instructions,
     } = req.body;
+
+    // When a regular user creates a request, it should have status "New" and no assigned technician
+    // Only managers can pre-assign technicians at creation time
+    let assignedTechnician = null;
+    if (technician && req.user.role === 'manager') {
+      assignedTechnician = technician;
+    }
 
     const newRequest = new MaintenanceRequest({
       subject,
@@ -31,12 +54,12 @@ const createRequest = async (req, res) => {
       category,
       maintenanceType,
       team,
-      technician,
+      technician: assignedTechnician,
       scheduledDate,
       durationHours,
       priority,
       company,
-      status,
+      status: 'New', // Always create with "New" status
       notes,
       instructions,
     });
@@ -44,11 +67,9 @@ const createRequest = async (req, res) => {
     const savedRequest = await newRequest.save();
 
     // Send notifications if technician is assigned
-    if (technician) {
+    if (assignedTechnician) {
       try {
-        // For now, we'll skip WebSocket notifications since io is not available in controllers
-        // In a full implementation, you'd pass io through middleware or use a different approach
-        await sendMaintenanceRequestNotification(null, technician, savedRequest, 'assigned');
+        await sendMaintenanceRequestNotification(null, assignedTechnician, savedRequest, 'assigned');
       } catch (notificationError) {
         console.error('Error sending notification:', notificationError);
         // Don't fail the request if notification fails
@@ -61,16 +82,30 @@ const createRequest = async (req, res) => {
   }
 };
 
-// @desc    Get all maintenance requests
+// @desc    Get all maintenance requests (filtered by role)
 // @route   GET /api/requests
 // @access  Private
 const getAllRequests = async (req, res) => {
   try {
-    const requests = await MaintenanceRequest.find()
+    let query = {};
+
+    // Admins and managers can see all requests
+    // Technicians can only see requests assigned to them or created by them
+    if (req.user.role === 'technician') {
+      query = {
+        $or: [
+          { technician: req.user._id },
+          { createdBy: req.user._id }
+        ]
+      };
+    }
+
+    const requests = await MaintenanceRequest.find(query)
       .populate('createdBy', 'firstName lastName')
       .populate('equipment', 'name')
       .populate('team', 'teamName')
       .populate('technician', 'firstName lastName');
+
     res.json(requests);
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error: error.message });
@@ -87,10 +122,22 @@ const getRequestById = async (req, res) => {
       .populate('equipment', 'name')
       .populate('team', 'teamName')
       .populate('technician', 'firstName lastName');
+
     if (!request) {
       return res.status(404).json({ message: 'Maintenance request not found' });
     }
-    res.json(request);
+
+    // Check if user has permission to view this request
+    const permission = canViewRequest(req.user, request);
+    if (!permission.allowed) {
+      return res.status(403).json({ message: permission.reason });
+    }
+
+    // Add permissions info to response
+    const response = request.toObject();
+    response.permissions = getRequestPermissions(req.user, request);
+
+    res.json(response);
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error: error.message });
   }
@@ -98,7 +145,7 @@ const getRequestById = async (req, res) => {
 
 // @desc    Update a maintenance request
 // @route   PUT /api/requests/:id
-// @access  Private
+// @access  Private (Role-based)
 const updateRequest = async (req, res) => {
   try {
     const {
@@ -117,30 +164,115 @@ const updateRequest = async (req, res) => {
       instructions,
     } = req.body;
 
-    const request = await MaintenanceRequest.findById(req.params.id);
+    const request = await MaintenanceRequest.findById(req.params.id).populate('technician');
 
     if (!request) {
       return res.status(404).json({ message: 'Maintenance request not found' });
     }
 
-    const oldStatus = request.status;
-    const oldTechnician = request.technician ? String(request.technician) : null;
+    // Check if user can view this request (basic access control)
+    const viewPermission = canViewRequest(req.user, request);
+    if (!viewPermission.allowed && req.user.role !== 'manager' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: viewPermission.reason });
+    }
 
-    request.subject = subject || request.subject;
-    request.equipment = equipment || request.equipment;
-    request.category = category || request.category;
-    request.maintenanceType = maintenanceType || request.maintenanceType;
-    request.team = team || request.team;
-    request.technician = technician || request.technician;
-    request.scheduledDate = scheduledDate || request.scheduledDate;
-    request.durationHours = durationHours || request.durationHours;
-    request.priority = priority || request.priority;
-    request.company = company || request.company;
-    request.status = status || request.status;
-    request.notes = notes || request.notes;
-    request.instructions = instructions || request.instructions;
+    const oldStatus = request.status;
+    const oldTechnician = request.technician ? String(request.technician._id) : null;
+
+    /**
+     * HANDLE TECHNICIAN ASSIGNMENT
+     * Rules:
+     * - Only managers can assign technicians
+     * - Technicians can only self-assign when status is "New"
+     */
+    if (technician !== undefined && String(technician) !== oldTechnician) {
+      if (String(technician) === req.user._id.toString() && req.user.role === 'technician') {
+        // Technician self-assignment
+        const selfAssignPermission = canSelfAssign(req.user, request);
+        if (!selfAssignPermission.allowed) {
+          return res.status(403).json({ message: selfAssignPermission.reason });
+        }
+        request.technician = technician;
+      } else {
+        // Assigning to another technician
+        const assignPermission = canAssignTechnician(req.user, request, technician);
+        if (!assignPermission.allowed) {
+          return res.status(403).json({ message: assignPermission.reason });
+        }
+        request.technician = technician;
+      }
+    }
+
+    /**
+     * HANDLE STATUS CHANGES
+     * Rules:
+     * - Managers can move to any status (including Scrap for equipment scrapping)
+     * - Technicians can only move their assigned requests through workflow
+     * - Admins cannot modify request status
+     */
+    if (status !== undefined && status !== oldStatus) {
+      const statusPermission = canMoveRequestStatus(req.user, request, status);
+      if (!statusPermission.allowed) {
+        return res.status(403).json({ message: statusPermission.reason });
+      }
+      request.status = status;
+    }
+
+    /**
+     * HANDLE OTHER FIELD UPDATES
+     * Rules:
+     * - Managers can update most fields
+     * - Technicians can update notes/instructions only for their assigned requests
+     * - Admins cannot update requests
+     */
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
+      // Managers and admins can update all fields
+      if (subject !== undefined) request.subject = subject;
+      if (equipment !== undefined) request.equipment = equipment;
+      if (category !== undefined) request.category = category;
+      if (maintenanceType !== undefined) request.maintenanceType = maintenanceType;
+      if (team !== undefined) request.team = team;
+      if (scheduledDate !== undefined) request.scheduledDate = scheduledDate;
+      if (durationHours !== undefined) request.durationHours = durationHours;
+      if (priority !== undefined) request.priority = priority;
+      if (company !== undefined) request.company = company;
+      if (notes !== undefined) request.notes = notes;
+      if (instructions !== undefined) request.instructions = instructions;
+    } else if (req.user.role === 'technician') {
+      // Technicians can only update notes and instructions for their assigned requests
+      const isAssignedToTechnician =
+        request.technician && String(request.technician._id) === req.user._id.toString();
+
+      if (!isAssignedToTechnician) {
+        return res.status(403).json({
+          message: 'You can only update notes and instructions for requests assigned to you'
+        });
+      }
+
+      if (notes !== undefined) request.notes = notes;
+      if (instructions !== undefined) request.instructions = instructions;
+
+      // Prevent technicians from changing other fields
+      if (
+        subject !== undefined ||
+        equipment !== undefined ||
+        category !== undefined ||
+        maintenanceType !== undefined ||
+        team !== undefined ||
+        scheduledDate !== undefined ||
+        durationHours !== undefined ||
+        priority !== undefined ||
+        company !== undefined
+      ) {
+        return res.status(403).json({
+          message: 'Technicians can only update notes and instructions'
+        });
+      }
+    }
 
     const updatedRequest = await request.save();
+    const response = updatedRequest.toObject();
+    response.permissions = getRequestPermissions(req.user, updatedRequest);
 
     // Send notifications based on changes
     try {
@@ -149,10 +281,8 @@ const updateRequest = async (req, res) => {
         await sendMaintenanceRequestNotification(null, technician, updatedRequest, 'assigned');
       }
 
-      // If status changed to a completed-like state (Repaired), notify creator
-      const newStatusNormalized = (status || '').toString().toLowerCase();
-      const oldStatusNormalized = (oldStatus || '').toString().toLowerCase();
-      if (newStatusNormalized === 'repaired' && oldStatusNormalized !== 'repaired') {
+      // If status changed to "Repaired", notify creator
+      if (status === 'Repaired' && oldStatus !== 'Repaired') {
         await sendCompletionNotification(null, updatedRequest.createdBy, updatedRequest);
       }
     } catch (notificationError) {
@@ -160,7 +290,7 @@ const updateRequest = async (req, res) => {
       // Don't fail the request if notification fails
     }
 
-    res.json(updatedRequest);
+    res.json(response);
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error: error.message });
   }
@@ -168,7 +298,7 @@ const updateRequest = async (req, res) => {
 
 // @desc    Delete a maintenance request
 // @route   DELETE /api/requests/:id
-// @access  Private
+// @access  Private (Manager/Admin only)
 const deleteRequest = async (req, res) => {
   try {
     const request = await MaintenanceRequest.findById(req.params.id);
@@ -177,7 +307,12 @@ const deleteRequest = async (req, res) => {
       return res.status(404).json({ message: 'Maintenance request not found' });
     }
 
-    await request.remove();
+    const deletePermission = canDeleteRequest(req.user, request);
+    if (!deletePermission.allowed) {
+      return res.status(403).json({ message: deletePermission.reason });
+    }
+
+    await request.deleteOne();
     res.json({ message: 'Maintenance request removed' });
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error: error.message });
@@ -186,12 +321,17 @@ const deleteRequest = async (req, res) => {
 
 // @desc    Check for overdue maintenance requests and send notifications
 // @route   POST /api/requests/check-overdue
-// @access  Private/Admin
+// @access  Private (Manager/Admin only)
 const checkOverdueRequests = async (req, res) => {
   try {
+    // Only managers and admins can check overdue requests
+    if (!['manager', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({
+        message: 'Only managers and admins can check overdue requests'
+      });
+    }
+
     const now = new Date();
-    // Use the project's status enum values (New, In Progress, Repaired, Scrap)
-    // Consider 'New' and 'In Progress' as outstanding states
     const overdueRequests = await MaintenanceRequest.find({
       status: { $in: ['New', 'In Progress'] },
       scheduledDate: { $lt: now }

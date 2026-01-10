@@ -142,11 +142,11 @@ function App() {
 
         {/* ==================== MAINTENANCE ROUTES ==================== */}
 
-        {/* Create Maintenance Request - Manager & Admin only */}
+        {/* Create Maintenance Request - Manager & Technician only */}
         <Route
           path="/maintenance/new"
           element={
-            <ProtectedRoute allowedRoles={['manager', 'admin']}>
+            <ProtectedRoute allowedRoles={['manager', 'technician']}>
               <CreateMaintenanceRequest user={user} />
             </ProtectedRoute>
           }
